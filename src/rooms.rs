@@ -1,5 +1,4 @@
 use std::sync::mpsc::{Sender, Receiver, channel};
-use std::time::{Duration};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
