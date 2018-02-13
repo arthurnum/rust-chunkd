@@ -6,9 +6,9 @@ use std::io::{self, Write};
 use std::collections::{HashMap};
 use std::collections::hash_map::RandomState;
 use std::thread;
-use std::str::FromStr;
 
 use protocol::enums::*;
+use protocol::BaseMessage;
 
 mod utils;
 use utils::sleep_nop;
@@ -32,6 +32,9 @@ fn main() {
     let arc_listeners = Arc::new(Mutex::new(listeners));
     let arc_listeners_shared = arc_listeners.clone();
 
+    let mut arc_room_counter = Arc::new(Mutex::new(0));
+    let arc_room_counter_shared = arc_room_counter.clone();
+
     {
         let arc_network_shared = arc_network.clone();
 
@@ -47,6 +50,13 @@ fn main() {
                                         let (addr, _) = network_lock.take();
                                         let mut arc_listeners_lock = arc_listeners_shared.lock().unwrap();
                                         arc_listeners_lock.push(addr);
+
+                                        let room_conter_lock = arc_room_counter_shared.lock().unwrap();
+                                        for (number, status) in rooms::rooms_status(&room_conter_lock) {
+                                            let msg = protocol::RoomStatusMessage::new(number, status);
+                                            let buf = msg.pack();
+                                            network_lock.send_to(&buf, &addr);
+                                        }
                                     }
 
                                     MessageType::RemoveFromListeners => {
@@ -68,7 +78,6 @@ fn main() {
         });
     }
 
-    let mut arc_room_counter = Arc::new(0);
     let mut rooms_hs: HashMap<u8, Arc<Mutex<Room>>, RandomState> = HashMap::with_capacity(4);
 
     let mut buffer = String::new();
@@ -87,18 +96,27 @@ fn main() {
                                 Some(arg) => {
                                     match arg as &str {
                                         "room" => {
-                                            match rooms::new(&arc_room_counter) {
+                                            let mut room_conter_lock = arc_room_counter.lock().unwrap();
+                                            match rooms::new(&room_conter_lock) {
                                                 Some(room) => {
                                                     let arc_room = rooms::spawn(room, move || {
                                                         // empty
                                                     });
                                                     let n = {
                                                         let new_room = arc_room.lock().unwrap();
-                                                        *Arc::make_mut(&mut arc_room_counter) ^= new_room.flag;
+                                                        *room_conter_lock ^= new_room.flag;
                                                         new_room.number.clone()
                                                     };
                                                     println!("Spawn room {:?}", n);
                                                     rooms_hs.insert(n, arc_room);
+
+                                                    let msg = protocol::RoomStatusMessage::new(n, true);
+                                                    let buf = msg.pack();
+                                                    let mut network_lock = arc_network.lock().unwrap();
+                                                    let arc_listeners_lock = arc_listeners.lock().unwrap();
+                                                    for addr in arc_listeners_lock.iter() {
+                                                        network_lock.send_to(&buf, addr);
+                                                    }
                                                 },
 
                                                 None => ()
@@ -127,10 +145,19 @@ fn main() {
                                                             {
                                                                 let arc_room = rooms_hs.get(&room_number).unwrap();
                                                                 let flag = rooms::close(&arc_room);
-                                                                *Arc::make_mut(&mut arc_room_counter) ^= flag;
+                                                                let mut room_conter_lock = arc_room_counter.lock().unwrap();
+                                                                *room_conter_lock ^= flag;
                                                             }
                                                             println!("Done");
                                                             rooms_hs.remove(&room_number);
+
+                                                            let msg = protocol::RoomStatusMessage::new(room_number, false);
+                                                            let buf = msg.pack();
+                                                            let mut network_lock = arc_network.lock().unwrap();
+                                                            let arc_listeners_lock = arc_listeners.lock().unwrap();
+                                                            for addr in arc_listeners_lock.iter() {
+                                                                network_lock.send_to(&buf, addr);
+                                                            }
                                                         }
                                                     } else { help(); }
                                                 }
@@ -152,7 +179,10 @@ fn main() {
                             for addr in arc_listeners_lock.iter() { println!("{:?}", addr); }
                         }
 
-                        "status" => { rooms::status(&arc_room_counter); }
+                        "status" => {
+                            let room_conter_lock = arc_room_counter.lock().unwrap();
+                            rooms::status(&room_conter_lock);
+                        }
 
                         "exit" => { break }
 

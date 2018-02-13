@@ -47,4 +47,8 @@ impl Networker {
     }
 
     pub fn take(&mut self) -> ClientPackage { self.poll.remove(0) }
+
+    pub fn send_to(&self, buf: &Vec<u8>, addr: &SocketAddr) {
+        self.socket.send_to(&buf, addr).unwrap();
+    }
 }

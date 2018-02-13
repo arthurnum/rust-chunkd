@@ -93,6 +93,15 @@ fn get_free_room_slot(rooms_counter: &u8) -> Option<(u8, u8)> {
     None
 }
 
+pub fn rooms_status(room_counter: &u8) -> Vec<(u8, bool)> {
+    vec![
+        (1, room_counter & ROOM1_FLAG == ROOM1_FLAG),
+        (2, room_counter & ROOM2_FLAG == ROOM2_FLAG),
+        (3, room_counter & ROOM3_FLAG == ROOM3_FLAG),
+        (4, room_counter & ROOM4_FLAG == ROOM4_FLAG)
+    ]
+}
+
 pub fn status(room_counter: &u8) {
     room_status(1, room_counter & ROOM1_FLAG == ROOM1_FLAG);
     room_status(2, room_counter & ROOM2_FLAG == ROOM2_FLAG);
