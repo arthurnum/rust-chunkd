@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use utils::sleep_nop;
+use controllers::Controller;
 
 const ROOM1_FLAG: u8 = 0b00000001;
 const ROOM2_FLAG: u8 = 0b00000010;
@@ -47,13 +48,12 @@ pub fn new(rooms_counter: &u8) -> Option<Room> {
     }
 }
 
-pub fn spawn<F>(this: Room, closure: F) -> Arc<Mutex<Room>>
-    where F: Fn() + Send + 'static + Sync {
+pub fn spawn(this: Room, controller: Controller) -> Arc<Mutex<Room>> {
     let arc_room = Arc::new(Mutex::new(this));
     let arc_room_shared = arc_room.clone();
     thread::spawn(move || {
         loop {
-            closure();
+            // controller call
             sleep_nop(2000);
             let room_lock = arc_room.lock().unwrap();
             let operation = room_lock.child_receiver.try_recv();

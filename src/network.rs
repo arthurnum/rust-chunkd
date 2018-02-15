@@ -1,7 +1,8 @@
 use std::net::{UdpSocket, SocketAddr, ToSocketAddrs};
 use protocol;
+use protocol::enums::MessageType;
 
-type ClientPackage = (SocketAddr, Vec<u8>);
+type ClientPackage = (SocketAddr, MessageType);
 
 pub struct Networker {
     socket: UdpSocket,
@@ -27,25 +28,13 @@ impl Networker {
 
         if result.is_ok() {
             let (_, src_addr) = result.unwrap();
-            self.poll.push((src_addr, buf));
+            self.poll.push((src_addr, protocol::unpack(&buf)));
 
             true
         } else { false }
     }
 
-    pub fn peek(&self) -> Option<protocol::enums::MessageType> {
-        match self.poll.get(0) {
-            Some(pckg) => {
-                let result = protocol::get_message_type(&pckg.1);
-                if result.is_ok() {
-                    Some(result.unwrap())
-                } else { None }
-            },
-
-            None => { None }
-        }
-    }
-
+    pub fn peek(&self) -> Option<&ClientPackage> { self.poll.get(0) }
     pub fn take(&mut self) -> ClientPackage { self.poll.remove(0) }
 
     pub fn send_to(&self, buf: &Vec<u8>, addr: &SocketAddr) {
