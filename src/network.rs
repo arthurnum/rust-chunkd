@@ -34,8 +34,8 @@ impl Networker {
         } else { false }
     }
 
-    pub fn peek(&self) -> Option<&ClientPackage> { self.poll.get(0) }
     pub fn take(&mut self) -> ClientPackage { self.poll.remove(0) }
+    pub fn poll_not_empty(&self) -> bool { !self.poll.is_empty() }
 
     pub fn send_to(&self, buf: &Vec<u8>, addr: &SocketAddr) {
         self.socket.send_to(&buf, addr).unwrap();

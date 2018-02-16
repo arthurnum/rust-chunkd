@@ -1,23 +1,18 @@
 extern crate chunk_protocol as protocol;
 
-use std::net::{SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::io::{self, Write};
-use std::collections::{HashMap};
-use std::collections::hash_map::RandomState;
-use std::thread;
 
 use protocol::enums::MessageType;
 
 mod utils;
-use utils::sleep_nop;
 
 mod controllers;
 
 mod rooms;
-use rooms::{Room};
 
 mod network;
+mod router;
 
 fn carriage() { print!("-> "); }
 fn help() {
@@ -27,60 +22,10 @@ fn help() {
 fn main() {
     protocol::hello();
     let network = network::Networker::new("127.0.0.1:45000");
-    let arc_network = Arc::new(Mutex::new(network));
-
-    let listeners: Vec<SocketAddr> = Vec::with_capacity(10);
-    let arc_listeners = Arc::new(Mutex::new(listeners));
-    let arc_listeners_shared = arc_listeners.clone();
+    let mut router = router::Router::new(network);
 
     let arc_room_counter = Arc::new(Mutex::new(0));
-    let arc_room_counter_shared = arc_room_counter.clone();
-
-    {
-        let arc_network_shared = arc_network.clone();
-
-        thread::spawn(move || {
-            loop {
-                {
-                    let mut network_lock = arc_network_shared.lock().unwrap();
-                    if network_lock.read() {
-                        let pckg = match network_lock.peek() {
-                            Some(package) => { Some(package.clone()) }
-                            None => None
-                        };
-
-                        if pckg.is_some() {
-                            match pckg.unwrap().1 {
-                                MessageType::AddToListenersRequest => {
-                                    let (addr, _) = network_lock.take();
-                                    let mut arc_listeners_lock = arc_listeners_shared.lock().unwrap();
-                                    arc_listeners_lock.push(addr);
-
-                                    let room_conter_lock = arc_room_counter_shared.lock().unwrap();
-                                    for (number, status) in rooms::rooms_status(&room_conter_lock) {
-                                        let msg = MessageType::RoomStatus { number: number, is_active: status };
-                                        let buf = protocol::pack(&msg);
-                                        network_lock.send_to(&buf, &addr);
-                                    }
-                                }
-
-                                MessageType::RemoveFromListeners => {
-                                    let (addr, _) = network_lock.take();
-                                    let mut arc_listeners_lock = arc_listeners_shared.lock().unwrap();
-                                    arc_listeners_lock.retain(|&src| src != addr);
-                                }
-
-                                _ => ()
-                            }
-                        }
-                    }
-                }
-                sleep_nop(10);
-            }
-        });
-    }
-
-    let mut rooms_hs: HashMap<u8, Arc<Mutex<Room>>, RandomState> = HashMap::with_capacity(4);
+    router.start(&arc_room_counter);
 
     let mut buffer = String::new();
     loop {
@@ -108,14 +53,12 @@ fn main() {
                                                         new_room.number.clone()
                                                     };
                                                     println!("Spawn room {:?}", n);
-                                                    rooms_hs.insert(n, arc_room);
+                                                    router.add_room(n, arc_room);
 
                                                     let msg = MessageType::RoomStatus { number: n, is_active: true };
                                                     let buf = protocol::pack(&msg);
-                                                    let mut network_lock = arc_network.lock().unwrap();
-                                                    let arc_listeners_lock = arc_listeners.lock().unwrap();
-                                                    for addr in arc_listeners_lock.iter() {
-                                                        network_lock.send_to(&buf, addr);
+                                                    for &(addr, _) in router.listeners.lock().unwrap().iter() {
+                                                        router.send_to(&buf, &addr);
                                                     }
                                                 },
 
@@ -141,22 +84,20 @@ fn main() {
                                                     let val = number.parse::<u8>();
                                                     if val.is_ok() {
                                                         let room_number = val.unwrap();
-                                                        if rooms_hs.get(&room_number).is_some() {
+                                                        if router.rooms.get(&room_number).is_some() {
                                                             {
-                                                                let arc_room = rooms_hs.get(&room_number).unwrap();
+                                                                let arc_room = router.rooms.get(&room_number).unwrap();
                                                                 let flag = rooms::close(&arc_room);
                                                                 let mut room_conter_lock = arc_room_counter.lock().unwrap();
                                                                 *room_conter_lock ^= flag;
                                                             }
                                                             println!("Done");
-                                                            rooms_hs.remove(&room_number);
+                                                            router.rooms.remove(&room_number);
 
                                                             let msg = MessageType::RoomStatus { number: room_number, is_active: false };
                                                             let buf = protocol::pack(&msg);
-                                                            let mut network_lock = arc_network.lock().unwrap();
-                                                            let arc_listeners_lock = arc_listeners.lock().unwrap();
-                                                            for addr in arc_listeners_lock.iter() {
-                                                                network_lock.send_to(&buf, addr);
+                                                            for &(addr, _) in router.listeners.lock().unwrap().iter() {
+                                                                router.send_to(&buf, &addr);
                                                             }
                                                         }
                                                     } else { help(); }
@@ -175,8 +116,7 @@ fn main() {
                         }
 
                         "clist" => {
-                            let arc_listeners_lock = arc_listeners.lock().unwrap();
-                            for addr in arc_listeners_lock.iter() { println!("{:?}", addr); }
+                            for &(addr, _) in router.listeners.lock().unwrap().iter() { println!("{:?}", addr); }
                         }
 
                         "status" => {
