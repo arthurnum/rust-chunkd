@@ -79,6 +79,17 @@ impl Router {
                                 listeners.retain(|&(src, _)| src != addr);
                             }
 
+                            MessageType::MemberIn(room_number) => {
+                                let mut listeners = listeners_shared.lock().unwrap();
+                                match listeners.iter_mut().find(|&&mut(src, _)| src == addr) {
+                                    Some(mut listener) => {
+                                        listener.1 = Some(room_number)
+                                    }
+
+                                    None => ()
+                                }
+                            }
+
                             _ => ()
                         }
                     }

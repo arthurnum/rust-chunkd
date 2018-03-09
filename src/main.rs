@@ -116,7 +116,7 @@ fn main() {
                         }
 
                         "clist" => {
-                            for &(addr, _) in router.listeners.lock().unwrap().iter() { println!("{:?}", addr); }
+                            for &(addr, rn) in router.listeners.lock().unwrap().iter() { println!("{:?} {:?}", addr, rn); }
                         }
 
                         "status" => {
