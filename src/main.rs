@@ -33,15 +33,15 @@ fn main() {
                         members_list.retain(|member| member.addr != addr);
                     }
 
-                    MessageType::MemberIn => {
+                    MessageType::MemberIn => {}
 
-                    }
-
-                    _ => ()
+                    _ => (),
                 }
             }
 
-            None => { sleep_nop(10); }
+            None => {
+                sleep_nop(10);
+            }
         }
 
         // break;

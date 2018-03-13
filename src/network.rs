@@ -1,21 +1,21 @@
-use std::net::{UdpSocket, SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use protocol;
 use protocol::enums::MessageType;
 
 type ClientPackage = (SocketAddr, MessageType);
 
 pub struct Networker {
-    socket: UdpSocket
+    socket: UdpSocket,
 }
 
 impl Networker {
     pub fn new<A: ToSocketAddrs>(addr: A) -> Networker {
         let socket = UdpSocket::bind(addr).expect("couldn't bind to address");
-        socket.set_nonblocking(true).expect("couldn't set nonblocking");
+        socket
+            .set_nonblocking(true)
+            .expect("couldn't set nonblocking");
 
-        Networker {
-            socket: socket
-        }
+        Networker { socket: socket }
     }
 
     pub fn read(&self) -> Option<ClientPackage> {
@@ -25,7 +25,9 @@ impl Networker {
         if result.is_ok() {
             let (_, src_addr) = result.unwrap();
             Some((src_addr, protocol::unpack(&buf)))
-        } else { None }
+        } else {
+            None
+        }
     }
 
     pub fn send_to(&self, buf: &Vec<u8>, addr: &SocketAddr) {
