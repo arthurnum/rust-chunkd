@@ -4,4 +4,6 @@ version = "0.0.1-dev"
 authors = ["arthurnum <arthurnum@gmail.com>"]
 
 [dependencies]
+cgmath = "0.16.0"
+time = "0.1.39"
 chunk-protocol = { git = "https://github.com/arthurnum/chunk-protocol" }

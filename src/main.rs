@@ -1,4 +1,9 @@
 extern crate chunk_protocol as protocol;
+extern crate cgmath;
+extern crate time;
+
+use std::collections::HashMap;
+use std::net::SocketAddr;
 
 use member::Member;
 use utils::sleep_nop;
@@ -8,13 +13,14 @@ use protocol::enums::MessageType;
 mod member;
 mod utils;
 mod network;
+mod timers;
 
 fn main() {
     protocol::hello();
 
     let network = Networker::new("127.0.0.1:45000");
 
-    let mut members_list: Vec<Member> = Vec::new();
+    let mut members: HashMap<SocketAddr, Member> = HashMap::new();
 
     loop {
         match network.read() {
@@ -23,17 +29,47 @@ fn main() {
 
                 match msg {
                     MessageType::AddToListenersRequest => {
-                        members_list.push(Member { addr: addr });
+                        members.insert(addr, Member::default(addr));
 
                         let data = protocol::pack(&MessageType::ServerOn);
                         network.send_to(&data, &addr);
                     }
 
                     MessageType::RemoveFromListeners => {
-                        members_list.retain(|member| member.addr != addr);
+                        members.remove(&addr);
                     }
 
-                    MessageType::MemberIn => {}
+                    MessageType::MemberIn => match members.get_mut(&addr) {
+                        Some(member) => {
+                            member.session_on = true;
+                        }
+
+                        None => (),
+                    }
+
+                    MessageType::MemberMove(x, y) => match members.get_mut(&addr) {
+                        Some(member) => {
+                            member.moving = true;
+                            member.move_direction.x = x;
+                            member.move_direction.y = y;
+                            if member.debug_move_start == 0 {
+                                member.debug_move_start = member.timer.elapsed();
+                            }
+                        }
+
+                        None => (),
+                    }
+
+                    MessageType::MemberStopMove => match members.get_mut(&addr) {
+                        Some(member) => {
+                            member.moving = false;
+                            member.debug_move_stop = member.timer.elapsed();
+                            println!("Moving elapsed time {:?}", member.debug_move_stop - member.debug_move_start);
+                            member.debug_move_start = 0
+                        }
+
+                        None => (),
+                    }
 
                     _ => (),
                 }
@@ -44,6 +80,8 @@ fn main() {
             }
         }
 
-        // break;
+        for member in members.values_mut() {
+            member.update();
+        }
     }
 }
